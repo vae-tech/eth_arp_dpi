@@ -1,0 +1,27 @@
+# Build artifacts
+work/
+*.wlf
+transcript
+*.vstf
+*.objdump
+*.map
+*.so
+*.o
+*.d
+
+# Modelsim/Questasim files
+modelsim.ini
+vsim_stacktrace.vstf
+alt_verilog_libs/
+
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Log files
+*.log
+
