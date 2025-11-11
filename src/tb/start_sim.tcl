@@ -21,7 +21,10 @@ quietly set RTL_FILES [list \
     "${RTL_PATH}/arp_pkg.sv" \
     "${RTL_PATH}/arp_parser.sv" \
     "${RTL_PATH}/arp_sender.sv" \
-    "${RTL_PATH}/arp_top.sv" \
+    "${RTL_PATH}/icmp_pkg.sv" \
+    "${RTL_PATH}/icmp_parser.sv" \
+    "${RTL_PATH}/icmp_sender.sv" \
+    "${RTL_PATH}/top.sv" \
     "${RTL_PATH}/dc_fifo_wrapper.sv" \
 ]
 
@@ -61,5 +64,4 @@ log -r *
 
 do wave.do
 run -all
-
 

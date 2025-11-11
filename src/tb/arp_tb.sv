@@ -133,12 +133,12 @@ module arp_tb;
             begin : TX_DATA_CAPTURE_THREAD
                 forever begin
                     @(posedge clk_tx);
-                    if(data_ack_tx) begin // wait for ack from MAC
+                    // if(data_ack_tx) begin // wait for ack from MAC
                         while(data_valid_tx) begin
                             pkt_tx_q.push_back(data_tx);
                             @(posedge clk_tx);
                         end 
-                    end 
+                    // end 
                 end
             end
 
