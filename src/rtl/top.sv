@@ -132,7 +132,7 @@ module arp_top (
         // Output data to Ethernet MAC
         .mac_data_o           (arp_data_tx),
         .mac_valid_o          (arp_valid_tx),
-        .mac_ack_i            (1)
+        .mac_ack_i            (DATA_ACK_TX)
     );
     
     //=======================================================================
@@ -193,7 +193,7 @@ module arp_top (
         // Output data to Ethernet MAC
         .mac_data_o           (icmp_data_tx),
         .mac_valid_o          (icmp_valid_tx),
-        .mac_ack_i            (1)
+        .mac_ack_i            (DATA_ACK_TX)
     );
     
     //=======================================================================

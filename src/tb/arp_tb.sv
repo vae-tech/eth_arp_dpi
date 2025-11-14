@@ -132,13 +132,14 @@ module arp_tb;
             //=======================================================================
             begin : TX_DATA_CAPTURE_THREAD
                 forever begin
+                    @(posedge data_ack_tx);
                     @(posedge clk_tx);
-                    // if(data_ack_tx) begin // wait for ack from MAC
+                    if(data_ack_tx) begin // wait for ack from MAC
                         while(data_valid_tx) begin
                             pkt_tx_q.push_back(data_tx);
                             @(posedge clk_tx);
                         end 
-                    // end 
+                    end 
                 end
             end
 
@@ -152,9 +153,9 @@ module arp_tb;
                         @(posedge clk_tx);
                     end
                     // send ack 1 clk cycle
-                    data_ack_tx <= 1'b1; // FIXME: non-blocking assignment to avoid race condition with data_ack_tx in capture thread
+                    data_ack_tx = 1'b1; // FIXME: non-blocking assignment to avoid race condition with data_ack_tx in capture thread
                     @(posedge clk_tx);
-                    data_ack_tx <= 1'b0; 
+                    data_ack_tx = 1'b0; 
                 end
             end
 
