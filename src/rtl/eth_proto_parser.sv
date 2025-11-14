@@ -1,68 +1,77 @@
+
+
 /*================================================================
-  ARP Parser Module
+  Ethernet Protocol Parser Module
   ================================================================
     Author:   Artem Voropaev
     Email:    voropaev.art@gmail.com
-    Created:  2025-11-06
+    Created:  2025-11-14
 
     Description:
-        This module is used to parse the ARP packet from the Ethernet MAC.
-        It validates the ARP frame and outputs the ARP packet if it is valid.
+        This module is used to parse various Ethernet protocol packets from the Ethernet MAC.
+        It validates the protocol frame and outputs the protocol packet if it is valid.
 
     Version:
-        2025-11-06 - 0.1:   - Init
+        2025-11-14 - 0.1:   - Init
 ================================================================*/
-
 `timescale 1ns / 1ns
 
-import arp_pkg::*;
-
-module arp_parser (
+module eth_proto_parser #(
+    parameter type T_PROTO_FRAME
+) (
     // Clock and Reset
-    input  logic        clk,
-    input  logic        rst,
+    input  logic         clk,
+    input  logic         rst,
     
+    // Protocol interface - ARP, ICMP, etc.
+    interface            proto_if,
+
     // Configuration
-    input  logic [47:0] hw_addr_i,
-    input  logic [31:0] ip_addr_i,
+    input  logic [47:0]  hw_addr_i,
+    input  logic [31:0]  ip_addr_i,
     
     // Input data from Ethernet MAC
-    input  logic [7:0]  mac_data_i,
-    input  logic        mac_valid_i,
-    
-    // Output ARP packet
-    output ether_arp_frame_t arp_pkt_o,
-    output logic             arp_pkt_valid_o
+    input  logic [7:0]   mac_data_i,
+    input  logic         mac_valid_i,
+    // Output PROTO packet
+    output T_PROTO_FRAME proto_pkt_o,
+    output logic         proto_pkt_valid_o
 );
-
+    
     //=======================================================================
     // Local Parameters and Type Definitions
     //=======================================================================
     
+    // Receive state machine states
     typedef enum logic [1:0] {
         ST_IDLE,
         ST_RCV_BYTES,
-        ST_CHECK_ARP
+        ST_CHECK_PROTO
     } state_t;
+
+    // Protocol packet type
+    typedef proto_if.proto_frame_t proto_frame_t;
     
     //=======================================================================
     // Internal Signals
     //=======================================================================
-    
+       
     // State machine variables
-    state_t state;
+    state_t     state;
     logic [7:0] rcv_byte_cnt;
-    
-    // Packet assembly
-    logic [$bits(ether_arp_frame_t)-1:0] arp_pkt_raw;
-    ether_arp_frame_t arp_req_pkt;
-    
+        
     // Control signals
-    logic valid_d;
-    logic sop;                     // Start of packet
-    logic eop;                     // End of packet               // End of packet
-    logic arp_frm_ok;              // ARP frame validation result
-    
+    logic       valid_d;
+    logic       sop;           // Start of packet
+    logic       eop;           // End of packet
+    logic       proto_frm_ok;  // PROTO frame validation result
+
+    // Received PROTO packet
+    proto_frame_t proto_rcv_pkt; 
+    // Packet assembly
+    logic [$bits(proto_frame_t)-1:0] proto_pkt_raw;
+
+
     //=======================================================================
     // Start/End of Packet Detection
     //=======================================================================
@@ -70,13 +79,14 @@ module arp_parser (
     assign sop =  mac_valid_i & ~valid_d;
     assign eop = ~mac_valid_i & valid_d;
     
-    assign arp_req_pkt = ether_arp_frame_t'(arp_pkt_raw);
+    assign proto_rcv_pkt = proto_frame_t'(proto_pkt_raw);
     
     //=======================================================================
-    // ARP Frame Validation Logic
+    // PROTO Frame Validation Logic
     //=======================================================================
 
-    assign arp_frm_ok = state == ST_CHECK_ARP && validate_arp_frame(arp_req_pkt, arp_req_ref, hw_addr_i, ip_addr_i) == 1;
+    assign proto_frm_ok = (state == ST_CHECK_PROTO) && 
+                          (proto_if.validate_proto_frame(proto_rcv_pkt, proto_if.proto_ref, hw_addr_i, ip_addr_i) == 1);
      
     //=======================================================================
     // Output Frame Generation
@@ -84,17 +94,17 @@ module arp_parser (
     
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
-            arp_pkt_o       <= '0;
-            arp_pkt_valid_o <= 1'b0;
+            proto_pkt_o       <= '0;
+            proto_pkt_valid_o <= 1'b0;
         end 
         else begin
-            if (arp_frm_ok) begin
-                arp_pkt_o       <= arp_req_pkt;
-                arp_pkt_valid_o <= 1'b1;
+            if (proto_frm_ok) begin
+                proto_pkt_o       <= proto_rcv_pkt;
+                proto_pkt_valid_o <= 1'b1;
             end 
             else begin
-                arp_pkt_o       <= '0;
-                arp_pkt_valid_o <= 1'b0;
+                proto_pkt_o       <= '0;
+                proto_pkt_valid_o <= 1'b0;
             end
         end
     end
@@ -120,7 +130,7 @@ module arp_parser (
         if (rst) begin
             state        <= ST_IDLE;
             rcv_byte_cnt <= '0;
-            arp_pkt_raw  <= '0;
+            proto_pkt_raw  <= '0;
         end 
         else begin
             case (state)
@@ -128,41 +138,41 @@ module arp_parser (
             // Wait for new packet
             //===============================================================
                 ST_IDLE: begin
-                    arp_pkt_raw  <= '0;
+                    proto_pkt_raw  <= '0;
                     rcv_byte_cnt <= '0;
                     
                     if (sop) begin
                         state        <= ST_RCV_BYTES;
                         rcv_byte_cnt <= rcv_byte_cnt + 1'b1;
-                        arp_pkt_raw  <= (arp_pkt_raw << 8) | mac_data_i;
+                        proto_pkt_raw  <= (proto_pkt_raw << 8) | mac_data_i;
                     end
                 end
                 
             //===============================================================
             // Receive bytes from Ethernet MAC until byte 
-            // count reaches ARP frame size
+            // count reaches PROTO frame size
             //===============================================================
                 ST_RCV_BYTES: begin
                     rcv_byte_cnt <= rcv_byte_cnt + 1'b1;
-                    arp_pkt_raw  <= (arp_pkt_raw << 8) | mac_data_i; // Shift left by 8 bits and add the new byte
+                    proto_pkt_raw  <= (proto_pkt_raw << 8) | mac_data_i; // Shift left by 8 bits and add the new byte
                     
-                    if (rcv_byte_cnt == lp_ARP_FRM_SZ-1) begin
-                        state <= ST_CHECK_ARP;
+                    if (rcv_byte_cnt == proto_if.lp_PROTO_FRM_SZ-1) begin
+                        state <= ST_CHECK_PROTO;
                     end
                     else if(eop) begin
                         state <= ST_IDLE;
                         rcv_byte_cnt <= '0;
-                        arp_pkt_raw <= '0;
+                        proto_pkt_raw <= '0;
                     end
                 end
                 
             //===============================================================
-            // Check if ARP frame received
+            // Check if PROTO frame received
             //===============================================================
-                ST_CHECK_ARP: begin
+                ST_CHECK_PROTO: begin
                     state        <= ST_IDLE;
                     rcv_byte_cnt <= '0;
-                    arp_pkt_raw  <= '0;
+                    proto_pkt_raw  <= '0;
                 end
             //===============================================================
             // Default state

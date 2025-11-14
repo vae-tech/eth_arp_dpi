@@ -17,8 +17,8 @@
 
 `timescale 1ns / 1ns
 
-import arp_pkg::*;
-import icmp_pkg::*;
+// import arp_pkg::*;
+// import icmp_pkg::*;
 
 module arp_top (
     // Reset and Configuration
@@ -42,43 +42,56 @@ module arp_top (
     //=======================================================================
     // Internal Signals
     //=======================================================================
-    
-    // ARP signals
-    ether_arp_frame_t arp_req_pkt;
-    logic             arp_req_pkt_valid;
 
-    // Clock domain crossing signals for ARP request packet
-    ether_arp_frame_t arp_req_pkt_tx;
+    //-----------------------------------------------------------------------
+    // ARP protocol interface
+    //
+    arp_if      arp_proto_if(); // ARP protocol interface
+    typedef arp_proto_if.proto_frame_t arp_proto_frame_t; // ARP protocol frame type
+
+    arp_proto_frame_t arp_req_pkt;
+    logic             arp_req_pkt_valid;
+    // CDC ARP
+    arp_proto_frame_t arp_req_pkt_tx;
     logic             arp_req_pkt_valid_tx;
     logic             arp_req_pkt_tx_ack;
     logic             arp_fifo_full;
     logic             arp_fifo_empty;
     
-    // ICMP signals
-    ether_icmp_frame_t icmp_req_pkt;
+    //-----------------------------------------------------------------------
+    // ICMP protocol interface
+    //
+    icmp_if            icmp_proto_if(); // ICMP protocol interface
+    typedef icmp_proto_if.proto_frame_t icmp_proto_frame_t; // ICMP protocol frame type
+    icmp_proto_frame_t icmp_req_pkt;
     logic              icmp_req_pkt_valid;
-    
-    // Clock domain crossing signals for ICMP request packet
-    ether_icmp_frame_t icmp_req_pkt_tx;
+    // CDC ICMP
     logic              icmp_req_pkt_valid_tx;
     logic              icmp_req_pkt_tx_ack;
     logic              icmp_fifo_full;
     logic              icmp_fifo_empty;
     
+    //-----------------------------------------------------------------------
     // TX Mux signals
+    //
     logic [7:0]  arp_data_tx;
     logic        arp_valid_tx;
     logic        arp_ack_tx;
     logic [7:0]  icmp_data_tx;
     logic        icmp_valid_tx;
     logic        icmp_ack_tx;
-    
+
+        
     //=======================================================================
     // ARP parser
     //=======================================================================
-    arp_parser arp_parser_i (
+    eth_proto_parser #(
+        .T_PROTO_FRAME    (arp_proto_frame_t)
+    ) arp_parser_i (
         .clk              (CLK_RX),
         .rst              (ARESET),
+        // Protocol interface
+        .proto_if         (arp_proto_if),
         // Configuration
         .hw_addr_i        (MY_MAC),
         .ip_addr_i        (MY_IPV4),
@@ -86,8 +99,8 @@ module arp_top (
         .mac_data_i       (DATA_RX),
         .mac_valid_i      (DATA_VALID_RX),
         // Output ARP packet
-        .arp_pkt_o        (arp_req_pkt),
-        .arp_pkt_valid_o  (arp_req_pkt_valid)
+        .proto_pkt_o      (arp_req_pkt),
+        .proto_pkt_valid_o(arp_req_pkt_valid)
     );
     
     //=======================================================================
@@ -96,7 +109,7 @@ module arp_top (
 
     dc_fifo_wrapper #(
         .VENDOR           ("ALTERA"),
-        .DATA_WIDTH       ($bits(ether_arp_frame_t)),
+        .DATA_WIDTH       ($bits(arp_proto_frame_t)),
         .FIFO_DEPTH       (16),
         .MEMORY_TYPE      ("distributed") // fir altera USE_EAB=ON
     ) arp_cdc_fifo (
@@ -138,9 +151,14 @@ module arp_top (
     //=======================================================================
     // ICMP parser
     //=======================================================================
-    icmp_parser icmp_parser_i (
+    eth_proto_parser #(
+        .T_PROTO_FRAME    (icmp_proto_frame_t)
+    ) icmp_parser_i (
+        // Clock and Reset
         .clk              (CLK_RX),
         .rst              (ARESET),
+        // Protocol interface
+        .proto_if         (icmp_proto_if),
         // Configuration
         .hw_addr_i        (MY_MAC),
         .ip_addr_i        (MY_IPV4),
@@ -148,8 +166,8 @@ module arp_top (
         .mac_data_i       (DATA_RX),
         .mac_valid_i      (DATA_VALID_RX),
         // Output ICMP packet
-        .icmp_pkt_o       (icmp_req_pkt),
-        .icmp_pkt_valid_o (icmp_req_pkt_valid)
+        .proto_pkt_o      (icmp_req_pkt),
+        .proto_pkt_valid_o(icmp_req_pkt_valid)
     );
     
     //=======================================================================
@@ -157,7 +175,7 @@ module arp_top (
     //=======================================================================
     dc_fifo_wrapper #(
         .VENDOR           ("ALTERA"),
-        .DATA_WIDTH       ($bits(ether_icmp_frame_t)),
+        .DATA_WIDTH       ($bits(icmp_proto_frame_t)),
         .FIFO_DEPTH       (16),
         .MEMORY_TYPE      ("distributed") // fir altera USE_EAB=ON
     ) icmp_cdc_fifo (
