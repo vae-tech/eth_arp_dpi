@@ -1,4 +1,4 @@
-# Ethernet ARP DPI Project
+# Ethernet Protocol Handler (ARP + ICMP) DPI Project
 ## Author
 
 **Artem Voropaev**  
@@ -8,36 +8,56 @@ Created: 2025-11-06
 
 ## Functional Description
 
-This project implements an **ARP (Address Resolution Protocol) responder** in SystemVerilog RTL that interfaces with a real Linux network stack using SystemVerilog DPI-C (Direct Programming Interface for C). The design can respond to real ARP requests from the network through a TAP (network tap) interface.
+This project implements a **multi-protocol Ethernet handler (ARP + ICMP)** in SystemVerilog RTL that interfaces with a real Linux network stack using SystemVerilog DPI-C (Direct Programming Interface for C). The design can respond to real ARP requests and ICMP ping requests from the network through a TAP (network tap) interface.
 
 ### Key Features:
-- **ARP Parser**: Parses incoming ARP request packets from Ethernet MAC, validates frame structure and checks if the request is for the configured IP address
-- **ARP Sender**: Generates and transmits ARP reply packets in response to valid requests
-- **Clock Domain Crossing**: Dual-clock FIFO for safe transfer of ARP packets between RX and TX clock domains
+- **Multi-Protocol Support**: Handles both ARP (Address Resolution Protocol) and ICMP (Internet Control Message Protocol - ping)
+- **Generic Protocol Framework**: Modular parser and sender modules that can work with any Ethernet protocol through SystemVerilog interfaces
+- **Protocol-Specific Handlers**:
+  - **ARP**: Responds to ARP requests with appropriate ARP replies
+  - **ICMP**: Responds to ping (echo request) with echo replies
+- **TX Multiplexer**: Arbitrates between multiple protocol transmitters (ARP has priority over ICMP)
+- **Clock Domain Crossing**: Dual-clock FIFOs for safe transfer of protocol packets between RX and TX clock domains
 - **TAP Interface Integration**: Connects RTL simulation to Linux TAP interface for real network packet exchange
 - **DPI-C Bridge**: Provides seamless communication between SystemVerilog testbench and C code for packet handling
 
 ### How It Works:
 ```mermaid
 flowchart TD
-    A["arping Tool<br/>(Send ARP Request)"] --> B["Linux TAP Interface (tap0)<br/>IP: 192.168.43.1/24"]
-    B --> C["eth_dpi.c (C)<br/>- Read from TAP<br/>- Write to TAP"]
-    C -->|DPI-C calls| D["arp_tb.sv (SystemVerilog TB)<br/>- Mailbox queues (to_hdl_mbx/from_hdl_mbx)<br/>- Clock generation (CLK_RX, CLK_TX)<br/>- DPI-C export/import tasks"]
-    D --> E["arp_top (DUT)"]
-    E --> F["arp_parser<br/>(RX clock domain)"]
-    F --> G["DC FIFO<br/>(Clock crossing)"]
-    G --> H["arp_sender<br/>(TX clock domain)"]
-    H --> I["ARP Reply Generated"]
-    I -->|Packets flow back via DPI-C| C
-    C --> J["Wireshark<br/>(Monitor ARP Request/Reply)"]
-    B --> J
+    A1["arping Tool"] --> TAP["Linux TAP Interface (tap0)<br/>IP: 192.168.43.1/24"]
+    A2["ping Tool"] --> TAP
+    TAP --> C["eth_dpi.c (C)<br/>- Read from TAP<br/>- Write to TAP"]
+    C -->|DPI-C calls| TB["arp_tb.sv (SystemVerilog TB)<br/>- Mailbox queues<br/>- Clock generation (CLK_RX, CLK_TX)<br/>- DPI-C export/import tasks"]
+    TB --> TOP["eth_proto_top (DUT)"]
+    
+    TOP --> ARP_MOD["ARP Protocol Handler"]
+    TOP --> ICMP_MOD["ICMP Protocol Handler"]
+    
+    ARP_MOD --> ARP_P["arp_parser<br/>(RX clock)"]
+    ARP_P --> ARP_F["ARP CDC FIFO"]
+    ARP_F --> ARP_S["arp_sender<br/>(TX clock)"]
+    
+    ICMP_MOD --> ICMP_P["icmp_parser<br/>(RX clock)"]
+    ICMP_P --> ICMP_F["ICMP CDC FIFO"]
+    ICMP_F --> ICMP_S["icmp_sender<br/>(TX clock)"]
+    
+    ARP_S --> MUX["TX Mux<br/>(Priority: ARP > ICMP)"]
+    ICMP_S --> MUX
+    
+    MUX --> REPLY["Protocol Replies"]
+    REPLY -->|via DPI-C| C
+    C --> WS["Wireshark<br/>(Monitor Traffic)"]
+    TAP --> WS
 ```
 1. A TAP interface (`tap0`) is created on the Linux host with IP address 192.168.43.1/24
-2. The C application (`eth`) reads packets from the TAP interface and forwards them to the RTL via DPI-C
-3. The RTL (`arp_top`) parses incoming ARP requests, validates them, and generates ARP replies
-4. ARP replies are sent back through the DPI-C interface to the TAP interface
-5. Real network tools like `arping` can send ARP requests that are processed by the simulated hardware
-6. Traffic can be monitored using Wireshark on the TAP interface
+2. The C application (`eth_dpi`) reads packets from the TAP interface and forwards them to the RTL via DPI-C
+3. The RTL (`eth_proto_top`) distributes incoming packets to both ARP and ICMP parsers:
+   - **ARP path**: Parses ARP requests, validates them, crosses clock domains via FIFO, and generates ARP replies
+   - **ICMP path**: Parses ICMP echo requests (ping), validates them, crosses clock domains via FIFO, and generates echo replies
+4. A TX multiplexer arbitrates between ARP and ICMP senders (ARP has priority)
+5. Protocol replies are sent back through the DPI-C interface to the TAP interface
+6. Real network tools like `arping` and `ping` can communicate with the simulated hardware
+7. All traffic can be monitored using Wireshark on the TAP interface
 
 **Default Configuration:**
 - DUT MAC Address: `00:11:22:33:44:55`
@@ -64,12 +84,19 @@ eth_dpi/
 │
 ├── src/
 │   ├── rtl/                          # RTL source files
-│   │   ├── arp_pkg.sv                # ARP protocol package with data structures
-│   │   ├── arp_parser.sv             # Parses incoming ARP request packets
-│   │   ├── arp_sender.sv             # Generates and sends ARP reply packets
-│   │   ├── arp_top.sv                # Top module connecting parser and sender
-│   │   ├── dc_fifo_wrapper.sv        # Dual-clock FIFO for CDC
-│   │   └── altera_mf.v               # Altera megafunction library (FIFO implementation)
+│   │   ├── eth_proto_top.sv          # Top module: Multi-protocol handler (ARP + ICMP)
+│   │   ├── eth_proto_parser.sv       # Generic protocol parser module
+│   │   ├── eth_proto_sender.sv       # Generic protocol sender module
+│   │   ├── dc_fifo_wrapper.sv        # Dual-clock FIFO wrapper for CDC
+│   │   ├── altera_mf.v               # Altera megafunction library (FIFO implementation)
+│   │   │
+│   │   ├── proto_arp/                # ARP protocol implementation
+│   │   │   ├── arp_if.sv             # ARP interface: frame structure, validation, reply generation
+│   │   │   └── arp_top.sv            # ARP top module: parser + CDC FIFO + sender
+│   │   │
+│   │   └── proto_icmp/               # ICMP protocol implementation
+│   │       ├── icmp_if.sv            # ICMP interface: frame structure, checksum, validation, reply
+│   │       └── icmp_top.sv           # ICMP top module: parser + CDC FIFO + sender
 │   │
 │   └── tb/                           # Testbench files
 │       ├── arp_tb.sv                 # Top-level testbench with DPI-C integration
@@ -80,7 +107,7 @@ eth_dpi/
 │
 └── sw/                               # Software/C code for DPI-C
     ├── eth_dpi.c                     # Main BFM: TAP interface handler
-    ├── dpi_tasks.h                   # DPI-C task declarations
+    ├── eth_dpi.h                     # DPI-C task declarations
     ├── Makefile                      # Builds shared library for DPI
     └── eth_dpi.so                    # Compiled shared library (generated)
 ```
@@ -88,11 +115,18 @@ eth_dpi/
 ### Key Files Description:
 
 **RTL Files:**
-- `arp_pkg.sv`: Defines ARP frame structure (`ether_arp_frame_t`) and validation functions
-- `arp_parser.sv`: State machine that receives bytes from MAC, assembles ARP frame, validates it
-- `arp_sender.sv`: State machine that generates ARP reply and serializes it byte-by-byte to MAC
-- `arp_top.sv`: Integrates parser, sender, and CDC FIFO with separate RX/TX clock domains
+- `eth_proto_top.sv`: Top-level module that instantiates ARP and ICMP handlers with TX multiplexer
+- `eth_proto_parser.sv`: Generic parameterized parser for any protocol (used by both ARP and ICMP)
+- `eth_proto_sender.sv`: Generic parameterized sender for any protocol (used by both ARP and ICMP)
 - `dc_fifo_wrapper.sv`: Clock domain crossing FIFO wrapper for Altera megafunctions
+
+**ARP Protocol Files:**
+- `arp_if.sv`: ARP interface defining frame structure, validation functions, and reply packet generation
+- `arp_top.sv`: ARP handler integrating generic parser, CDC FIFO, and generic sender
+
+**ICMP Protocol Files:**
+- `icmp_if.sv`: ICMP interface defining frame structure (Ethernet + IP + ICMP), checksum calculation, validation, and reply generation
+- `icmp_top.sv`: ICMP handler integrating generic parser, CDC FIFO, and generic sender
 
 **Testbench Files:**
 - `arp_tb.sv`: SystemVerilog testbench with mailbox-based packet queues and DPI-C exports/imports
@@ -100,7 +134,7 @@ eth_dpi/
 
 **Software Files:**
 - `eth_dpi.c`: Creates TAP interface, reads/writes packets, interfaces with RTL via DPI-C tasks
-- `dpi_tasks.h`: Header with DPI-C function declarations for SystemVerilog-C interface
+- `eth_dpi.h`: Header with DPI-C function declarations for SystemVerilog-C interface
 
 ---
 
@@ -158,6 +192,9 @@ export LM_LICENSE_FILE=/home/vae/Questa_sim/license.dat
 **Important:** TAP interface creation requires root privileges.
 
 ```bash
+# Make the script executable
+chmod +x scripts/create_tap_iface.sh
+
 # Create TAP interface with IP 192.168.43.1/24
 sudo ./scripts/create_tap_iface.sh
 ```
@@ -188,6 +225,11 @@ tap0: flags=4099<UP,BROADCAST,MULTICAST>  mtu 1500
 
 **Important**: run the simulation with sudo privileges.
 
+```bash
+# Make the script executable
+chmod +x run.sh
+```
+
 Run the simulation in **console mode** (no GUI):
 ```bash
 sudo ./run.sh
@@ -207,7 +249,7 @@ sudo ./run.sh -gui
 
 **Note:** The simulation runs indefinitely (does not auto-terminate). You'll need to stop it manually or it will run until packets are exchanged.
 
-### **Send ARP Requests with arping**
+### **Test ARP with arping**
 
 **In a separate terminal**, while the simulation is running, send ARP requests:
 
@@ -241,7 +283,41 @@ ARPING 192.168.1.1
 
 ```
 
-### Step 4: Monitor Traffic with Wireshark
+### **Test ICMP (Ping)**
+
+**In a separate terminal**, while the simulation is running, send ping requests:
+
+```bash
+# Ping the DUT's IP address (192.168.1.1)
+ping -I tap0 192.168.1.1
+```
+
+**Expected Output:**
+```
+ping -I tap0 192.168.1.1
+PING 192.168.1.1 (192.168.1.1) from 192.168.43.1 tap0: 56(84) bytes of data.
+64 bytes from 192.168.1.1: icmp_seq=1 ttl=64 time=8.23 ms
+64 bytes from 192.168.1.1: icmp_seq=2 ttl=64 time=6.45 ms
+64 bytes from 192.168.1.1: icmp_seq=3 ttl=64 time=7.89 ms
+64 bytes from 192.168.1.1: icmp_seq=4 ttl=64 time=5.67 ms
+
+--- 192.168.1.1 ping statistics ---
+4 packets transmitted, 4 received, 0% packet loss, time 3005ms
+rtt min/avg/max/mdev = 5.670/7.060/8.230/1.012 ms
+```
+
+**In the QuestaSim console**, you should see ICMP packets being processed:
+```
+# HOST: TAP-RD: nread=098
+# 00 11 22 33 44 55 e6 07 6f 82 09 1b 08 00 45 00 
+# 00 54 a1 2c 40 00 40 01 9f 7e c0 a8 2b 01 c0 a8 
+# 01 01 08 00 d8 3e 12 34 00 01 ...
+# [            35678912] RX: Got packet;  sz =   98
+# [            35679688] TX: Packets in store=    1
+# [            35679688] TX: Sent packet; sz =   98
+```
+
+### **Monitor Traffic with Wireshark**
 
 **In another terminal**, launch Wireshark to observe packet exchange:
 
