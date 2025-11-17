@@ -18,12 +18,14 @@ vlog -vlog01compat -work altera_mf_ver "${PROJECT_ROOT}/src/rtl/altera_mf.v"
 
 # Source file lists
 quietly set RTL_FILES [list \
-    "${RTL_PATH}/arp_if.sv" \
+    "${RTL_PATH}/proto_arp/arp_if.sv" \
+    "${RTL_PATH}/proto_arp/arp_top.sv" \
+    "${RTL_PATH}/proto_icmp/icmp_if.sv" \
+    "${RTL_PATH}/proto_icmp/icmp_top.sv" \
     "${RTL_PATH}/eth_proto_parser.sv" \
     "${RTL_PATH}/eth_proto_sender.sv" \
-    "${RTL_PATH}/icmp_if.sv" \
+    "${RTL_PATH}/eth_proto_top.sv" \
     "${RTL_PATH}/dc_fifo_wrapper.sv" \
-    "${RTL_PATH}/top.sv" \
 ]
 
 # Testbench files

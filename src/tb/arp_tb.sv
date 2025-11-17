@@ -57,7 +57,7 @@ module arp_tb;
     //=======================================================================
     // DUT
     //=======================================================================
-    arp_top dut (
+    eth_proto_top dut (
         // Reset and Configuration
         .ARESET         (areset),
         .MY_MAC         (my_mac),

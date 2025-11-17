@@ -139,7 +139,7 @@ module eth_proto_sender #(
             // Send bytes of protocol reply packet
             //===============================================================
                 ST_SEND_BYTES: begin
-                    if (mac_valid_o) begin  // If MAC acknowledges or no flow control
+                    if (mac_valid_o) begin  
                         if (tx_byte_cnt == proto_if.lp_PROTO_FRM_SZ - 1) begin
                             state       <= ST_IDLE;
                             mac_valid_o <= 1'b0;
