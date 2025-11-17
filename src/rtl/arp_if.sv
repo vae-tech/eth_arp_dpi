@@ -52,6 +52,9 @@ interface arp_if;
     // Helper Functions
     //=======================================================================
 
+    //-----------------------------------------------------------------------
+    // Validate ARP frame
+    //  
     function int validate_proto_frame(
             input proto_frame_t arp_lhs,
             input proto_frame_t arp_rhs,
@@ -89,6 +92,34 @@ interface arp_if;
         else begin
             return 1; // Valid ARP request
         end
+    endfunction
+
+    //-----------------------------------------------------------------------
+    // Build ARP reply packet from request
+    //  
+    function proto_frame_t build_reply_pkt(
+            input proto_frame_t req_pkt,
+            input logic [47:0] hw_addr_i,
+            input logic [31:0] ip_addr_i
+        );
+        
+        proto_frame_t reply_pkt;
+        
+        // Build ARP reply from the received request
+        reply_pkt.dst_mac    = req_pkt.src_mac;       // Reply to sender
+        reply_pkt.src_mac    = hw_addr_i;             // Our MAC
+        reply_pkt.ethertype  = 16'h0806;              // ARP EtherType
+        reply_pkt.hw_type    = 16'h0001;              // Ethernet
+        reply_pkt.proto_type = 16'h0800;              // IPv4
+        reply_pkt.hw_len     = 8'h06;                 // MAC address length
+        reply_pkt.proto_len  = 8'h04;                 // IP address length
+        reply_pkt.opcode     = 16'h0002;              // ARP Reply (2)
+        reply_pkt.sender_mac = hw_addr_i;             // Our MAC
+        reply_pkt.sender_ip  = ip_addr_i;             // Our IP
+        reply_pkt.target_mac = req_pkt.sender_mac;    // Requester's MAC
+        reply_pkt.target_ip  = req_pkt.sender_ip;     // Requester's IP
+        
+        return reply_pkt;
     endfunction
 
 endinterface : arp_if

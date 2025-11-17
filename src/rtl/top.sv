@@ -132,16 +132,20 @@ module arp_top (
     //=======================================================================
     // ARP sender
     //=======================================================================
-    arp_sender arp_sender_i (
+    eth_proto_sender #(
+        .T_PROTO_FRAME        (arp_proto_frame_t)
+    ) arp_sender_i (
         .clk                  (CLK_TX),
         .rst                  (ARESET),
+        // Protocol interface
+        .proto_if             (arp_proto_if),
         // Configuration
         .hw_addr_i            (MY_MAC),
         .ip_addr_i            (MY_IPV4),
         // Input ARP request
-        .arp_req_pkt_i        (arp_req_pkt_tx),
-        .arp_req_pkt_valid_i  (arp_req_pkt_valid_tx),
-        .arp_req_pkt_ack_o    (arp_req_pkt_tx_ack),    // 1 clk strobe to get new data from FIFO
+        .proto_req_pkt_i      (arp_req_pkt_tx),
+        .proto_req_pkt_valid_i(arp_req_pkt_valid_tx),
+        .proto_req_pkt_ack_o  (arp_req_pkt_tx_ack),    // 1 clk strobe to get new data from FIFO
         // Output data to Ethernet MAC
         .mac_data_o           (arp_data_tx),
         .mac_valid_o          (arp_valid_tx),
@@ -198,16 +202,20 @@ module arp_top (
     //=======================================================================
     // ICMP sender
     //=======================================================================
-    icmp_sender icmp_sender_i (
+    eth_proto_sender #(
+        .T_PROTO_FRAME    (icmp_proto_frame_t)
+    ) icmp_sender_i (
         .clk                  (CLK_TX),
         .rst                  (ARESET),
+        // Protocol interface
+        .proto_if             (icmp_proto_if),
         // Configuration
         .hw_addr_i            (MY_MAC),
         .ip_addr_i            (MY_IPV4),
         // Input ICMP request
-        .icmp_req_pkt_i       (icmp_req_pkt_tx),
-        .icmp_req_pkt_valid_i (icmp_req_pkt_valid_tx),
-        .icmp_req_pkt_ack_o   (icmp_req_pkt_tx_ack),
+        .proto_req_pkt_i      (icmp_req_pkt_tx),
+        .proto_req_pkt_valid_i(icmp_req_pkt_valid_tx),
+        .proto_req_pkt_ack_o  (icmp_req_pkt_tx_ack),
         // Output data to Ethernet MAC
         .mac_data_o           (icmp_data_tx),
         .mac_valid_o          (icmp_valid_tx),

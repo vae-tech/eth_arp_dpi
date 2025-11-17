@@ -79,7 +79,9 @@ interface icmp_if;
     // Helper Functions
     //=======================================================================
 
+    //-----------------------------------------------------------------------
     // Calculate IP header checksum
+    //  
     function logic [15:0] calc_ip_checksum(
             input logic [3:0]  version,
             input logic [3:0]  ihl,
@@ -111,7 +113,9 @@ interface icmp_if;
         return checksum;
     endfunction
 
+    //-----------------------------------------------------------------------
     // Calculate ICMP checksum
+    //  
     function logic [15:0] calc_icmp_checksum(
             input logic [7:0]   icmp_type,
             input logic [7:0]   icmp_code,
@@ -144,6 +148,9 @@ interface icmp_if;
         return checksum;
     endfunction
 
+    //-----------------------------------------------------------------------
+    // Validate ICMP frame
+    //  
     function int validate_proto_frame(
             input proto_frame_t icmp_lhs,
             input proto_frame_t icmp_rhs,
@@ -178,6 +185,74 @@ interface icmp_if;
         else begin
             return 1; // Valid ICMP echo request
         end
+    endfunction
+
+    //-----------------------------------------------------------------------
+    // Build ICMP reply packet from request
+    //  
+    function proto_frame_t build_reply_pkt(
+            input proto_frame_t req_pkt,
+            input logic [47:0] hw_addr_i,
+            input logic [31:0] ip_addr_i
+        );
+        
+        proto_frame_t reply_pkt;
+        logic [15:0] ip_total_length;
+        
+        // Calculate total IP packet length (IP header + ICMP header + ICMP data)
+        ip_total_length = 16'd20 + 16'd8 + 16'd56; // 84 bytes
+        
+        // Build ICMP reply from the received request
+        // Ethernet header
+        reply_pkt.dst_mac    = req_pkt.src_mac;       // Reply to sender
+        reply_pkt.src_mac    = hw_addr_i;             // Our MAC
+        reply_pkt.ethertype  = 16'h0800;              // IPv4 EtherType
+        
+        // IP header
+        reply_pkt.ip_version   = 4'h4;                // IPv4
+        reply_pkt.ip_ihl       = 4'h5;                // 5 * 4 = 20 bytes
+        reply_pkt.ip_tos       = 8'h00;               // Default TOS
+        reply_pkt.ip_length    = ip_total_length;     // Total length (84 bytes)
+        reply_pkt.ip_id        = req_pkt.ip_id;       // Echo back ID
+        reply_pkt.ip_flags     = 3'b000;              // No flags
+        reply_pkt.ip_frag_off  = 13'h0;               // No fragmentation
+        reply_pkt.ip_ttl       = 8'h40;               // TTL = 64
+        reply_pkt.ip_protocol  = 8'h01;               // ICMP
+        reply_pkt.ip_src       = ip_addr_i;           // Our IP
+        reply_pkt.ip_dst       = req_pkt.ip_src;      // Requester's IP
+        
+        // Calculate IP checksum
+        reply_pkt.ip_checksum = calc_ip_checksum(
+            reply_pkt.ip_version,
+            reply_pkt.ip_ihl,
+            reply_pkt.ip_tos,
+            reply_pkt.ip_length,
+            reply_pkt.ip_id,
+            reply_pkt.ip_flags,
+            reply_pkt.ip_frag_off,
+            reply_pkt.ip_ttl,
+            reply_pkt.ip_protocol,
+            reply_pkt.ip_src,
+            reply_pkt.ip_dst
+        );
+        
+        // ICMP header
+        reply_pkt.icmp_type     = 8'h00;              // Echo Reply (0)
+        reply_pkt.icmp_code     = 8'h00;              // Code 0
+        reply_pkt.icmp_id       = req_pkt.icmp_id;    // Echo back ID
+        reply_pkt.icmp_seq      = req_pkt.icmp_seq;   // Echo back sequence
+        reply_pkt.icmp_data     = req_pkt.icmp_data;  // Echo back data
+        
+        // Calculate ICMP checksum (for echo reply)
+        reply_pkt.icmp_checksum = calc_icmp_checksum(
+            reply_pkt.icmp_type,
+            reply_pkt.icmp_code,
+            reply_pkt.icmp_id,
+            reply_pkt.icmp_seq,
+            reply_pkt.icmp_data
+        );
+        
+        return reply_pkt;
     endfunction
 
 endinterface : icmp_if

@@ -16,7 +16,7 @@
 
 `timescale 1ns / 1ns
 
-import arp_pkg::*;
+// import arp_pkg::*;
 
 module arp_tb;
 
