@@ -12,7 +12,7 @@
         2025-11-06 - 0.1:   - Init
 ================================================================*/
 
-package arp_pkg;
+interface arp_if;
 
     // Complete Ethernet ARP frame structure
     typedef struct packed {
@@ -28,9 +28,9 @@ package arp_pkg;
         logic [31:0] sender_ip;    // Sender protocol address (IP)
         logic [47:0] target_mac;   // Target hardware address (MAC)
         logic [31:0] target_ip;    // Target protocol address (IP)
-    } ether_arp_frame_t;
+    } proto_frame_t;
 
-    const ether_arp_frame_t arp_req_ref = '{
+    const proto_frame_t proto_ref = '{
         dst_mac     : 48'h0,
         src_mac     : 48'h0,
         ethertype   : 16'h0806,
@@ -45,16 +45,19 @@ package arp_pkg;
         target_ip   : 32'h0
     };
 
-    localparam int    lp_ARP_FRM_SZ = $bits(ether_arp_frame_t)/8; // Size in bytes
+    localparam int    lp_PROTO_FRM_SZ = $bits(proto_frame_t)/8; // Size in bytes
     localparam logic [47:0] lp_BROADCAST_MAC = 48'hFFFFFFFFFFFF; // Broadcast MAC address
 
     //=======================================================================
     // Helper Functions
     //=======================================================================
 
-    function int validate_arp_frame(
-            input ether_arp_frame_t arp_lhs,
-            input ether_arp_frame_t arp_rhs,
+    //-----------------------------------------------------------------------
+    // Validate ARP frame
+    //  
+    function int validate_proto_frame(
+            input proto_frame_t arp_lhs,
+            input proto_frame_t arp_rhs,
             input logic [47:0] mac_addr_i,
             input logic [31:0] ip_addr_i
         );
@@ -65,22 +68,22 @@ package arp_pkg;
         else if (arp_lhs.src_mac == mac_addr_i) begin
             return -2; // Echo protection
         end
-        else if (arp_lhs.ethertype != arp_req_ref.ethertype) begin
+        else if (arp_lhs.ethertype != arp_rhs.ethertype) begin
             return -3; // Wrong EtherType
         end
-        else if (arp_lhs.hw_type != arp_req_ref.hw_type) begin
+        else if (arp_lhs.hw_type != arp_rhs.hw_type) begin
             return -4; // Wrong hardware type
         end
-        else if (arp_lhs.proto_type != arp_req_ref.proto_type) begin
+        else if (arp_lhs.proto_type != arp_rhs.proto_type) begin
             return -5; // Wrong protocol type
         end
-        else if (arp_lhs.hw_len != arp_req_ref.hw_len) begin
+        else if (arp_lhs.hw_len != arp_rhs.hw_len) begin
             return -6; // Wrong hardware length
         end
-        else if (arp_lhs.proto_len != arp_req_ref.proto_len) begin
+        else if (arp_lhs.proto_len != arp_rhs.proto_len) begin
             return -7; // Wrong protocol length
         end
-        else if (arp_lhs.opcode != arp_req_ref.opcode) begin
+        else if (arp_lhs.opcode != arp_rhs.opcode) begin
             return -8; // Wrong opcode
         end
         else if (arp_lhs.target_ip != ip_addr_i) begin
@@ -91,4 +94,32 @@ package arp_pkg;
         end
     endfunction
 
-endpackage : arp_pkg
+    //-----------------------------------------------------------------------
+    // Build ARP reply packet from request
+    //  
+    function proto_frame_t build_reply_pkt(
+            input proto_frame_t req_pkt,
+            input logic [47:0] hw_addr_i,
+            input logic [31:0] ip_addr_i
+        );
+        
+        proto_frame_t reply_pkt;
+        
+        // Build ARP reply from the received request
+        reply_pkt.dst_mac    = req_pkt.src_mac;       // Reply to sender
+        reply_pkt.src_mac    = hw_addr_i;             // Our MAC
+        reply_pkt.ethertype  = 16'h0806;              // ARP EtherType
+        reply_pkt.hw_type    = 16'h0001;              // Ethernet
+        reply_pkt.proto_type = 16'h0800;              // IPv4
+        reply_pkt.hw_len     = 8'h06;                 // MAC address length
+        reply_pkt.proto_len  = 8'h04;                 // IP address length
+        reply_pkt.opcode     = 16'h0002;              // ARP Reply (2)
+        reply_pkt.sender_mac = hw_addr_i;             // Our MAC
+        reply_pkt.sender_ip  = ip_addr_i;             // Our IP
+        reply_pkt.target_mac = req_pkt.sender_mac;    // Requester's MAC
+        reply_pkt.target_ip  = req_pkt.sender_ip;     // Requester's IP
+        
+        return reply_pkt;
+    endfunction
+
+endinterface : arp_if
